@@ -48,6 +48,8 @@ import java.net.URL;
 @InternalApi
 public class HttpDatastoreRpc implements DatastoreRpc {
 
+  private static final ThreadLocal<Boolean> IS_TRANSACTION = new ThreadLocal<>();
+
   private final com.google.datastore.v1.client.Datastore client;
 
   public HttpDatastoreRpc(DatastoreOptions options) {
@@ -87,6 +89,7 @@ public class HttpDatastoreRpc implements DatastoreRpc {
       public void initialize(HttpRequest httpRequest) throws IOException {
         censusHttpModuleHttpRequestInitializer.initialize(httpRequest);
         httpRequest.getHeaders().setUserAgent(applicationName);
+        httpRequest.getHeaders().set("x-goog-is-transaction", Boolean.TRUE.equals(IS_TRANSACTION.get()) ? "true" : "false");
       }
     };
   }
@@ -146,28 +149,49 @@ public class HttpDatastoreRpc implements DatastoreRpc {
 
   @Override
   public BeginTransactionResponse beginTransaction(BeginTransactionRequest request) {
+    IS_TRANSACTION.set(true);
     try {
       return client.beginTransaction(request);
     } catch (com.google.datastore.v1.client.DatastoreException ex) {
       throw translate(ex);
+    } finally {
+      IS_TRANSACTION.remove();
     }
   }
 
   @Override
   public CommitResponse commit(CommitRequest request) {
+    boolean isTx =
+        request.getMode() == CommitRequest.Mode.TRANSACTIONAL
+            || !request.getTransaction().isEmpty()
+            || request.hasSingleUseTransaction();
+    if (isTx) {
+      IS_TRANSACTION.set(true);
+    }
     try {
       return client.commit(request);
     } catch (com.google.datastore.v1.client.DatastoreException ex) {
       throw translate(ex, request.getMode() == CommitRequest.Mode.NON_TRANSACTIONAL);
+    } finally {
+      IS_TRANSACTION.remove();
     }
   }
 
   @Override
   public LookupResponse lookup(LookupRequest request) {
+    boolean isTx =
+        request.hasReadOptions()
+            && (!request.getReadOptions().getTransaction().isEmpty()
+                || request.getReadOptions().hasNewTransaction());
+    if (isTx) {
+      IS_TRANSACTION.set(true);
+    }
     try {
       return client.lookup(request);
     } catch (com.google.datastore.v1.client.DatastoreException ex) {
       throw translate(ex);
+    } finally {
+      IS_TRANSACTION.remove();
     }
   }
 
@@ -182,28 +206,49 @@ public class HttpDatastoreRpc implements DatastoreRpc {
 
   @Override
   public RollbackResponse rollback(RollbackRequest request) {
+    IS_TRANSACTION.set(true);
     try {
       return client.rollback(request);
     } catch (com.google.datastore.v1.client.DatastoreException ex) {
       throw translate(ex);
+    } finally {
+      IS_TRANSACTION.remove();
     }
   }
 
   @Override
   public RunQueryResponse runQuery(RunQueryRequest request) {
+    boolean isTx =
+        request.hasReadOptions()
+            && (!request.getReadOptions().getTransaction().isEmpty()
+                || request.getReadOptions().hasNewTransaction());
+    if (isTx) {
+      IS_TRANSACTION.set(true);
+    }
     try {
       return client.runQuery(request);
     } catch (com.google.datastore.v1.client.DatastoreException ex) {
       throw translate(ex);
+    } finally {
+      IS_TRANSACTION.remove();
     }
   }
 
   @Override
   public RunAggregationQueryResponse runAggregationQuery(RunAggregationQueryRequest request) {
+    boolean isTx =
+        request.hasReadOptions()
+            && (!request.getReadOptions().getTransaction().isEmpty()
+                || request.getReadOptions().hasNewTransaction());
+    if (isTx) {
+      IS_TRANSACTION.set(true);
+    }
     try {
       return client.runAggregationQuery(request);
     } catch (com.google.datastore.v1.client.DatastoreException ex) {
       throw translate(ex);
+    } finally {
+      IS_TRANSACTION.remove();
     }
   }
 
